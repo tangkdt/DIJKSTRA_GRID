@@ -27,6 +27,7 @@ class App(tk.Frame):
         self.submit_button = None
         self.cost_label = None
         self.animation = None
+        self.total_animation_time = 1000 # 1 sec to draw path
 
         self.draw_menu()
 
@@ -198,7 +199,7 @@ class App(tk.Frame):
                                     )  
                         
         # Workaround for animation since using time.sleep() and .update() in loops would break things
-        delay = 50
+        delay = self.total_animation_time // len(cell_path)
         self.animation = self.root.after(delay, lambda: self.animate_path(cell_path, k + 1))
         
 
