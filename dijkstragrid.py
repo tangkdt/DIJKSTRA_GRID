@@ -30,27 +30,9 @@ class App(tk.Frame):
         self.total_animation_time = 1000 # 1 sec to draw path
 
         self.draw_menu()
-
-    # Callback for submit button
-    def submit(self):
-        n = self.n_entry.get()
-        low = self.low_entry.get()
-        high = self.high_entry.get()
-
-        if not all([n, low, high]): return
-
-        n = int(n)
-        low = int(low)
-        high = int(high)
-
-        if low > high or low < 0: 
-            print("Invalid range")
-            return
-
-        self.draw_dijkstra_grid(n, low, high)
     
     def draw_menu(self):
-        n_entry_label = tk.Label(self.menu_frame, text="Enter N for NxN grid")
+        n_entry_label = tk.Label(self.menu_frame, text="Enter N for NxN grid (Must be > 0)")
         self.n_entry = tk.Entry(self.menu_frame, width=self.w)
         n_entry_label.pack()
         self.n_entry.pack()
@@ -65,25 +47,44 @@ class App(tk.Frame):
         high_entry_label.pack()
         self.high_entry.pack()
 
-        submit_button = tk.Button(self.menu_frame, text="Submit", command=self.submit)
+        def submit_and_run(event=None):
+            n = self.n_entry.get()
+            low = self.low_entry.get()
+            high = self.high_entry.get()
+
+            if not all([n, low, high]): return
+
+            n = int(n)
+            low = int(low)
+            high = int(high)
+
+            if n <= 0:
+                print("Invalid N (Must be positive int)")
+                return
+
+            if low > high or low < 0: 
+                print("Invalid range")
+                return
+
+            A = RANDOM_GRID(n, low, high)
+            initial_cell_s = (0, 0)
+            cell_t = (n-1, n-1)
+            self.draw_dijkstra_grid(A, n, low, high, initial_cell_s, cell_t)
+
+        # Hitting enter 
+        submit_button = tk.Button(self.menu_frame, text="Submit", command=submit_and_run)
         submit_button.pack()
+        self.root.bind("<Return>", submit_and_run)
 
-        # Allow enter button to submit
-        self.root.bind("<Return>", lambda event: self.submit())
-
-    def draw_dijkstra_grid(self, n: int, low: int, high: int): 
-        # Reset
-        if self.cost_label: self.cost_label.destroy()
-        self.canvas.delete("all") 
-        self.canvas.update()
-
-        # Update so that the height of the menu can be retrieved
+    # Visualizes DIJKSTRA_GRID from cell_s to cell_t 
+    # on a NxN GRID A with weights between low and high
+    def draw_dijkstra_grid(self, A: list[list[int]], n: int, low: int, high: int, cell_s: int, cell_t: int):
         self.root.update_idletasks()
         menu_h = self.menu_frame.winfo_height()  
-
         screen_w = self.root.winfo_screenwidth()
         screen_h = self.root.winfo_screenheight()
 
+        # Calculate cell sizes for grid
         self.cell_size = min(screen_w // n, (screen_h - menu_h - self.margin) // n)
         self.cell_center = self.cell_size // 2
 
@@ -91,38 +92,77 @@ class App(tk.Frame):
         grid_w = grid_h = n * self.cell_size
         self.canvas.config(width=grid_w, height=grid_h)
 
-        # Set window dimensions
+        # Set new window dimensions
         self.w = min(grid_w, screen_w)
         self.h = min(grid_h + menu_h + self.margin, screen_h)
         self.root.geometry(f'{self.w}x{self.h}')
 
-        cell_s = (0, 0)
-        cell_t = (n-1, n-1)
+        # Reset cost_label
+        if self.cost_label: self.cost_label.destroy()
 
-        A = RANDOM_GRID(n, low, high)
+        # Delete drawn path if grid exists, reset all otherwise
+        self.canvas.delete("path") if A else self.canvas.delete("All")
+        self.canvas.update()
+
+
+        # Temporarily change starting pos weight to reflect dist of 0
+        i, j = cell_s
+        original_weight = A[i][j]
+        A[i][j] = 0 
         pprint(A)
 
         min_cost, min_cell_path = DIJKSTRA_GRID(A, cell_s, cell_t)
-
         self.draw_grid(A, low,  high)
         self.draw_path(min_cell_path)
 
         path_cost = sum(A[i][j] for (i, j) in min_cell_path)
-        valid = (min_cost == path_cost)
-        
-        if valid:
-            output = f'This path is valid! (min_cost: {min_cost} == path_cost: {path_cost})'
-        else:
-            output = f'This path is invalid! (min_cost: {min_cost} != path_cost: {path_cost})'
 
+        A[i][j] = original_weight
+
+        if min_cost == path_cost:
+            output = f'This shortest path from {cell_s} to {cell_t} is valid! (min cost: {min_cost} == path cost: {path_cost})'
+        else:
+            output = f'This shortest path from {cell_s} to {cell_t} is invalid! (min cost: {min_cost} != path cost: {path_cost})'
+
+        # Output validity check
         self.cost_label = tk.Label(self.root, 
-                         text=output, 
-                         font=("Arial", 20),
-                         bg="black", fg="white", 
-                         padx=5, pady=5
+                        text=output, 
+                        font=("Arial", 15),
+                        bg="black", fg="white", 
+                        padx=5, pady=5
                         )
                         
         self.cost_label.pack(side="bottom")
+
+        def select_cell_s(event):
+            i = event.y // self.cell_size 
+            j = event.x // self.cell_size
+
+            cell_s = (i, j)
+
+            self.draw_dijkstra_grid(A, n, low, high, cell_s, cell_t)
+
+        def highlight_cell(event):
+            # Delete original highlight
+            self.canvas.delete("highlighted_cell")
+
+            i = event.y // self.cell_size 
+            j = event.x // self.cell_size
+
+            x0 = j * self.cell_size
+            y0 = i * self.cell_size
+            x1 = x0 + self.cell_size
+            y1 = y0 + self.cell_size
+
+            self.canvas.create_oval(x0, y0, x1, y1,
+                                    outline="purple",
+                                    width=5,
+                                    tags="highlighted_cell"
+                                    )
+
+        # Allows clicking to choose starting cell
+        self.canvas.bind("<Motion>", highlight_cell)
+        self.canvas.bind("<Button-1>", select_cell_s)
 
     # Cuts low and high range into three colors: green, yellow, red
     def get_weight_color(num: int, low: int, high: int) -> str:
@@ -196,6 +236,7 @@ class App(tk.Frame):
         self.canvas.create_rectangle(x0, y0, x1, y1, 
                                      outline=color,
                                      width=width,
+                                     tags="path"
                                     )  
                         
         # Workaround for animation since using time.sleep() and .update() in loops would break things
@@ -212,8 +253,6 @@ def RANDOM_GRID(n: int, low: int, high: int) -> list[list[int]]:
         for _ in range(n):
             w = random.randint(low, high)
             A[i].append(w)
-
-    A[0][0] = 0 # Ensure starting weight is 0
 
     return A
 
